@@ -20,9 +20,12 @@ UP_TEXT_COLOR = '#73D3CC'
 DOWN_TEXT_COLOR = '#DC2C27'
 
 
-def date2num(date):
+def date2num1(date):
     converter = mdates.strpdate2num('%Y-%m-%d')
     return converter(date)
+
+def date2num(date):
+    return date
 
 
 class StockTradingGraph:
@@ -161,7 +164,9 @@ class StockTradingGraph:
         step_range = range(window_start, current_step + 1)
 
         # Format dates as timestamps, necessary for candlestick graph
-        dates = np.array([date2num(x)
+        #dates = np.array([date2num(x)
+                          #for x in self.df['Date'].values[step_range]])
+        dates = np.array([x
                           for x in self.df['Date'].values[step_range]])
 
         self._render_net_worth(current_step, net_worth, step_range, dates)

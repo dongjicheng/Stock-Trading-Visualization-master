@@ -133,3 +133,7 @@ while True:
     #showDistancesFromi2j(distance, path,('btc','usdt'))
     import time
     time.sleep(1)
+
+
+
+tf.keras.preprocessing.timeseries_dataset_from_array
