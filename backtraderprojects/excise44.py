@@ -12,10 +12,10 @@ import backtrader as bt
 # 创建一个策略
 class TestStrategy(bt.Strategy):
     params = (
-        ('maperiod', 15),
+        ('deep', -0.3),
         ('printlog', False),
-        ('k',3),
-        ('isA',False),
+        ('profit',0.3),
+        ('isA', False),
         ('onlyprintgood',True)
     )
 
@@ -81,13 +81,8 @@ class TestStrategy(bt.Strategy):
 
         # 检查我们是否在市场上
         if not self.position:
-            isfaild = False
-            for i in range(self.params.k):
-                if i > 0 and self.dataclose[-i] < self.dataclose[-(i-1)]:
-                    isfaild = True
-                    break
-            if not isfaild:
-                # 买，买，买!!! (应用所有可能的默认参数)
+            if (self.dataclose[0] - max(self.dataclose)) / max(self.dataclose) <= self.params.deep:
+                # 最大回撤达到deep 买，买，买!!! (应用所有可能的默认参数)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
                 # 跟踪创建的订单以避免第二个订单
@@ -98,7 +93,7 @@ class TestStrategy(bt.Strategy):
                 self.order = self.buy(size=size)
         else:
             # 已经在市场，我们可能需要做空
-            if len(self) >= (self.bar_executed + self.params.maperiod):
+            if (self.dataclose[0] - self.position.price) / self.position.price >= self.params.profit:
                 # 卖，卖，卖!!! (应用所有可能的默认参数)
                 self.log('SELL CREATE, %.2f' % self.dataclose[0])
 
@@ -115,11 +110,11 @@ class TestStrategy(bt.Strategy):
         self.basline = self.basesize * self.dataclose[0] + self.rest
         if self.params.onlyprintgood:
             if self.broker.getvalue()/self.init_cash - 1 > self.basline/self.init_cash - 1:
-                self.log('(MA Period %2d, K %2d, profit %f, baseline %f) Ending Value %.2f,baseline Value %.2f' %
-                     (self.params.maperiod, self.params.k, self.broker.getvalue()/self.init_cash - 1,self.basline/self.init_cash - 1, self.broker.getvalue(),self.basline), doprint=True)
+                self.log('(MA deep %f, P %f, profit %f, baseline %f) Ending Value %.2f,baseline Value %.2f' %
+                     (self.params.deep, self.params.profit, self.broker.getvalue()/self.init_cash - 1,self.basline/self.init_cash - 1, self.broker.getvalue(),self.basline), doprint=True)
         else:
-            self.log('(MA Period %2d, K %2d, profit %f, baseline %f) Ending Value %.2f,baseline Value %.2f' %
-                     (self.params.maperiod, self.params.k, self.broker.getvalue() / self.init_cash - 1,
+            self.log('(MA deep %f, P %f, profit %f, baseline %f) Ending Value %.2f,baseline Value %.2f' %
+                     (self.params.deep, self.params.profit, self.broker.getvalue() / self.init_cash - 1,
                       self.basline / self.init_cash - 1, self.broker.getvalue(), self.basline), doprint=True)
 
 
@@ -127,12 +122,12 @@ if __name__ == '__main__':
     # 创建一个大脑实例
     cerebro = bt.Cerebro()
 
-    # 添加一个策略
-    #cerebro.addstrategy(TestStrategy)
-    #连续跌k天买入，maperiod天后卖出
-    cerebro.optstrategy(
-        TestStrategy,
-        maperiod=range(1, 360), k=range(1,9), isA=True, printlog=False, onlyprintgood=False)
+    # 添加一个策略(最大跌幅超过deep买，买入后盈利超过profit卖)
+    cerebro.addstrategy(TestStrategy,deep=-0.15, profit=0.4, isA=True, printlog=False, onlyprintgood=False)
+    #最大回撤达到deep后买入，盈利profit后卖出
+    # cerebro.optstrategy(
+    #     TestStrategy,
+    #     deep=[-i/10 for i in range(1, 9)], profit=[i/10 for i in range(1, 100)], isA=True, printlog=False, onlyprintgood=True)
     # 数据保存在样本的一个子文件夹中。我们需要找到脚本的位置
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     datapath = os.path.join(modpath, '../../datas/orcl-1995-2014.txt')
@@ -158,10 +153,7 @@ if __name__ == '__main__':
     import tushare as ts
     ts.set_token('1eda71057295b5ba834d31d24b572521d24689463e7328ca84fed1d6')
     pro = ts.pro_api()
-    df = pro.query('daily', ts_code='600519.SH', start_date='20140123',end_date='20210619')
-    index = pro.index_daily(ts_code='399300.SZ', start_date='20170921')
-    index = index[["trade_date", "open", "close", "high", "low", 'change', "pct_chg", "vol", "amount"]]
-    index = index.set_index(["trade_date"])
+    df = pro.query('daily', ts_code='600519.SH', start_date='20070123',end_date='20181231')
     df = df.set_index(["trade_date"])
     df = df.sort_index(ascending=True)
     features_considered = ['open', 'close', 'high', 'low', "vol"]
@@ -176,7 +168,7 @@ if __name__ == '__main__':
     cerebro.adddata(data)
 
     # 设定我们希望的初始金额
-    cerebro.broker.setcash(20000000.0)
+    cerebro.broker.setcash(400000.0)
 
     # 根据stake添加一个固定下单量
     #cerebro.addsizer(bt.sizers.FixedSize, stake=1)
@@ -185,4 +177,12 @@ if __name__ == '__main__':
     cerebro.broker.setcommission(commission=0.001)
 
     # 运行所有命令
-    cerebro.run(maxcpus=1)
+    cerebro.addanalyzer(bt.analyzers.SharpeRatio, _name='SharpeRatio')
+    cerebro.addanalyzer(bt.analyzers.DrawDown, _name='DW')
+    results = cerebro.run(maxcpus=1)
+    strat = results[0]
+    print('Final Portfolio Value: %.2f' % cerebro.broker.getvalue())
+    print('SR:', strat.analyzers.SharpeRatio.get_analysis())
+    print('DW:', strat.analyzers.DW.get_analysis())
+
+    cerebro.plot()

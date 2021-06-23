@@ -14,8 +14,8 @@ class TestStrategy(bt.Strategy):
     params = (
         ('maperiod', 15),
         ('printlog', False),
-        ('k',3),
-        ('isA',False),
+        ('k', 3),
+        ('isA', False),
         ('onlyprintgood',True)
     )
 
@@ -28,6 +28,7 @@ class TestStrategy(bt.Strategy):
     def __init__(self):
         # 保存对收盘价线最新数据的引用
         self.dataclose = self.datas[0].close
+        self.dataopen = self.datas[0].open
         # 跟踪待处理订单和买入价格/佣金
         self.order = None
         self.buyprice = None
@@ -83,18 +84,18 @@ class TestStrategy(bt.Strategy):
         if not self.position:
             isfaild = False
             for i in range(self.params.k):
-                if i > 0 and self.dataclose[-i] < self.dataclose[-(i-1)]:
+                if i >= 2 and self.dataclose[-i] < self.dataclose[-(i-1)]:
                     isfaild = True
                     break
-            if not isfaild:
+            if not isfaild and self.dataclose[-1] < self.dataclose[0]:
                 # 买，买，买!!! (应用所有可能的默认参数)
                 self.log('BUY CREATE, %.2f' % self.dataclose[0])
 
                 # 跟踪创建的订单以避免第二个订单
                 if self.params.isA:
-                    size = int(self.broker.getvalue()*0.9 / self.dataclose[0]/100)*100
+                    size = int(self.broker.getvalue()*0.99 / self.dataclose[0]/100)*100
                 else:
-                    size =self.broker.getvalue()*0.9/self.dataclose[0]-0.1
+                    size = self.broker.getvalue()*0.99 / self.dataclose[0]-0.1
                 self.order = self.buy(size=size)
         else:
             # 已经在市场，我们可能需要做空
@@ -122,17 +123,15 @@ class TestStrategy(bt.Strategy):
                      (self.params.maperiod, self.params.k, self.broker.getvalue() / self.init_cash - 1,
                       self.basline / self.init_cash - 1, self.broker.getvalue(), self.basline), doprint=True)
 
-
 if __name__ == '__main__':
     # 创建一个大脑实例
     cerebro = bt.Cerebro()
 
-    # 添加一个策略
-    #cerebro.addstrategy(TestStrategy)
-    #连续跌k天买入，maperiod天后卖出
+    # 添加一个策略(连续跌k天并且首次收红后买进，maperiod天后卖出)
+    # cerebro.addstrategy(TestStrategy,maperiod=141, k=5, isA=True, printlog=False,onlyprintgood=False)
     cerebro.optstrategy(
         TestStrategy,
-        maperiod=range(1, 360), k=range(1,9), isA=True, printlog=False, onlyprintgood=False)
+        maperiod=[i for i in range(1, 180,10)], k=[i for i in range(1, 10)], isA=True, printlog=False, onlyprintgood=True)
     # 数据保存在样本的一个子文件夹中。我们需要找到脚本的位置
     modpath = os.path.dirname(os.path.abspath(sys.argv[0]))
     datapath = os.path.join(modpath, '../../datas/orcl-1995-2014.txt')
@@ -153,12 +152,15 @@ if __name__ == '__main__':
     df.columns = ['high','low','open','close','volume','Adjusted_Close']
     df.pop('Adjusted_Close')
     df = df.sort_index()
-    df1 = df[-345:]
+    df = df[-345:]
 
+    start_date, end_date = '20210101', '20211226'
     import tushare as ts
+
     ts.set_token('1eda71057295b5ba834d31d24b572521d24689463e7328ca84fed1d6')
     pro = ts.pro_api()
-    df = pro.query('daily', ts_code='600519.SH', start_date='20140123',end_date='20210619')
+    # df = pro.query('daily', ts_code='600519.SH', start_date='20070123',end_date='20210619')
+    df = ts.pro_bar(ts_code='600872.SH', adj='hfq', start_date=start_date, end_date=end_date)
     index = pro.index_daily(ts_code='399300.SZ', start_date='20170921')
     index = index[["trade_date", "open", "close", "high", "low", 'change', "pct_chg", "vol", "amount"]]
     index = index.set_index(["trade_date"])
@@ -170,13 +172,14 @@ if __name__ == '__main__':
     df = features
     df.index = pd.to_datetime(df.index, format='%Y%m%d')
 
+
     data = bt.feeds.PandasData(dataname=df)
 
     # 把数据槽添加到大脑引擎中
     cerebro.adddata(data)
 
     # 设定我们希望的初始金额
-    cerebro.broker.setcash(20000000.0)
+    cerebro.broker.setcash(200000.0)
 
     # 根据stake添加一个固定下单量
     #cerebro.addsizer(bt.sizers.FixedSize, stake=1)
@@ -186,3 +189,4 @@ if __name__ == '__main__':
 
     # 运行所有命令
     cerebro.run(maxcpus=1)
+    #cerebro.plot()

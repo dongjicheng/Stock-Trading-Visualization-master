@@ -137,6 +137,21 @@ if __name__ == '__main__':
     df = df.sort_index()
     df = df[-500:]
     print(df.head())
+
+    import tushare as ts
+    ts.set_token('1eda71057295b5ba834d31d24b572521d24689463e7328ca84fed1d6')
+    pro = ts.pro_api()
+    df = pro.query('daily', ts_code='600519.SH', start_date='20170921')
+    index = pro.index_daily(ts_code='399300.SZ', start_date='20170921')
+    index = index[["trade_date", "open", "close", "high", "low", 'change', "pct_chg", "vol", "amount"]]
+    index = index.set_index(["trade_date"])
+    df = df.set_index(["trade_date"])
+    df = df.sort_index(ascending=True)
+    features_considered = ['open', 'close', 'high', 'low', "vol"]
+    features = df[features_considered]
+    features.columns = ['open', 'close', 'high', 'low','volume']
+    df = features
+
     data = bt.feeds.PandasData(dataname=df)
 
 
